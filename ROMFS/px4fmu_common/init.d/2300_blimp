@@ -1,0 +1,27 @@
+#!nsh
+#
+# @name Blimp
+#
+# @type Blimp
+# @class Blimp
+#
+# @output MAIN1 throttle
+# @output MAIN2 aileron
+# @output MAIN3 elevator
+# @output MAIN4 rudder
+# @output MAIN5 gear
+# @output MAIN6 flaps
+#
+# @output AUX1 feed-through of RC AUX1 channel
+# @output AUX2 feed-through of RC AUX2 channel
+# @output AUX3 feed-through of RC AUX3 channel
+#
+# @maintainer Lorenz Meier <lorenz@px4.io>
+#
+
+set MIXER AETRFG
+
+serial start
+
+# rate must be set by group (see pwm info)
+# throttle is in the same group as servos

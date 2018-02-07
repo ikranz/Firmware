@@ -10,6 +10,9 @@ set(config_module_list
 	#
 	# Board support modules
 	#
+
+	modules/serial
+
 	drivers/airspeed
 	drivers/blinkm
 	drivers/bmi160

@@ -7,9 +7,13 @@ set(CMAKE_TOOLCHAIN_FILE ${PX4_SOURCE_DIR}/cmake/toolchains/Toolchain-arm-none-e
 set(config_uavcan_num_ifaces 2)
 
 set(config_module_list
+	modules/serial
+	examples/matlab_csv_serial
 	examples/pwm_pass
 	examples/px4_simple_app
 	examples/ppm_read
+	examples/pwm_out
+
 	#
 	# Board support modules
 	#

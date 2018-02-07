@@ -38,7 +38,7 @@ int ppm_read_main(int argc, char *argv[])
 	/*advertize the pwm topic*/
 	struct actuator_controls_s pwm;
 	memset(&pwm, 0, sizeof(pwm));
-	orb_advert_t pwm_pub = orb_advertise(ORB_ID(actuator_controls), &pwm);
+	//orb_advert_t pwm_pub = orb_advertise(ORB_ID(actuator_controls), &pwm);
 
 	struct actuator_armed_s arm;
 	memset(&arm, 0, sizeof(arm));

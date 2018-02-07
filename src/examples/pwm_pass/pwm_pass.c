@@ -8,11 +8,27 @@
 #include <px4_config.h>
 #include <px4_tasks.h>
 #include <px4_posix.h>
+#include <px4_getopt.h>
+#include <px4_defines.h>
+#include <px4_log.h>
+#include <px4_module.h>
+
+#include <stdlib.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <poll.h>
 #include <string.h>
 #include <math.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <stdbool.h>
+#include <float.h>
+
+#ifdef __PX4_NUTTX
+#include <nuttx/fs/ioctl.h>
+#endif
+#include <nuttx/sched.h>
 
 #include <uORB/uORB.h>
 #include <uORB/topics/sensor_combined.h>
@@ -23,50 +39,112 @@
 #include <uORB/topics/actuator_outputs.h>
 #include <uORB/topics/output_pwm.h>
 
+#include "systemlib/systemlib.h"
+#include "systemlib/err.h"
+#include "systemlib/param/param.h"
+#include "drivers/drv_pwm_output.h"
+
+#include <sys/prctl.h>
+#include <drivers/drv_hrt.h>
+#include <termios.h>
+#include <errno.h>
+#include <limits.h>
+#include <drivers/drv_accel.h>
+#include <drivers/drv_gyro.h>
+#include <systemlib/perf_counter.h>
+#include <systemlib/err.h>
+
 __EXPORT int pwm_pass_main(int argc, char *argv[]);
 
 int pwm_pass_main(int argc, char *argv[]) {
 
-	struct actuator_armed_s arm;
-	memset(&arm, 0, sizeof(arm));
-	orb_advert_t arm_pub = orb_advertise(ORB_ID(actuator_armed), &arm);
-	arm.armed = true;
-	orb_publish(ORB_ID(actuator_armed), arm_pub, &arm);
+
+	/*ESTABLISH SERIAL CONNECTION*/
+	char *uart_name = "/dev/ttyACM0";
+
+	int serial_fd = open(uart_name, O_RDWR | O_NOCTTY);
+
+	unsigned speed = 921600;
+
+	if (serial_fd < 0) {
+		err(1, "failed to open port: %s", uart_name);
+	}
+
+	/* Try to set baud rate */
+	struct termios uart_config;
+	int termios_state;
+
+	/* Back up the original uart configuration to restore it after exit */
+	if ((termios_state = tcgetattr(serial_fd, &uart_config)) < 0) {
+		warnx("ERR GET CONF %s: %d\n", uart_name, termios_state);
+		close(serial_fd);
+		return -1;
+	}
+
+	/* Clear ONLCR flag (which appends a CR for every LF) */
+	uart_config.c_oflag &= ~ONLCR;
+
+	cfsetispeed(&uart_config, speed);
+	cfsetospeed(&uart_config, speed);
 
 
-	struct output_pwm_s pwm1;
-	memset(&pwm1, 0, sizeof(pwm1));
-	orb_advert_t pwm1_pub = orb_advertise(ORB_ID(output_pwm), &pwm1);
 
-			pwm1.values[0] = 1500;
-			pwm1.values[1] = 1500;
-			pwm1.values[2] = 1500;
-			pwm1.values[3] = 1500;
-			pwm1.values[4] = 1500;
-			pwm1.values[5] = 1500;
+	/*CONFIGURE PPM AND PWM*/
+	const char *dev = PWM_OUTPUT0_DEVICE_PATH;
+	int fd = px4_open(dev, 0);
 
-	PX4_INFO("PWM BEGIN");
+	//arm servo output
+	px4_ioctl(fd, PWM_SERVO_SET_ARM_OK, 0);
+	px4_ioctl(fd, PWM_SERVO_ARM, 0);
 
-		for(int i = 0; i < 1000000; i++) {
+	//400 Hz output
+	px4_ioctl(fd, PWM_SERVO_SET_UPDATE_RATE, 400);
 
-			/*pwm1.values[0] = 1500;
-			pwm1.values[1] = 1500;
-			pwm1.values[2] = 1500;
-			pwm1.values[4] = 1500;
-			pwm1.values[5] = 1500;
-			orb_publish(ORB_ID(output_pwm), pwm1_pub, &pwm1);*/
-			orb_publish(ORB_ID(output_pwm), pwm1_pub, &pwm1);
+	/*subscribe to receiver input topic*/
+	int rc_sub_fd = orb_subscribe(ORB_ID(rc_channels));
 
-			/*PX4_INFO("\n THRO: \t%.4d\n ALIE: \t%.4d\n ELEV: \t%.4d\n RUDD: \t%.4d\n GEAR: \t%.4d\n AUX1: \t%.4d\n",
-				pwm1.values[0],
-				pwm1.values[1],
-				pwm1.values[2],
-				pwm1.values[3],
-				pwm1.values[4],
-				pwm1.values[5]);*/
+	/*update rate limit 100Hz*/
+	orb_set_interval(rc_sub_fd, 10);
+
+	/*create list of file descriptors*/
+	px4_pollfd_struct_t fds[] = {
+		{.fd = rc_sub_fd, .events = POLLIN},
+	};
+
+	while(1){
+		/*wait 1000ms for one file descriptor change*/
+		//dprintf(serial_fd, "value found");
+		int poll_ret = px4_poll(fds, 1, 1000);
+		int val;
+
+		/*handle no data change*/
+		if(poll_ret == 0) {
+			PX4_ERR("Got no data");
 		}
 
-	PX4_INFO("PWM END");
+		/*handle data change*/
+		else {
+
+			if(fds[0].revents & POLLIN) {
+				struct rc_channels_s data;
+				orb_copy(ORB_ID(rc_channels), rc_sub_fd, &data);
+
+				if((double)data.channels[3] > 0.5) {
+					//dprintf(serial_fd, "\n");
+					for (unsigned i = 0; i < 6; i++) {
+						val = ((double)data.channels[i]+1.5) * 1000;
+						//dprintf(serial_fd, "%d, ", val);
+						//dprintf(serial_fd, "value found");
+						if(val > 2000){val = 2000;}
+						px4_ioctl(fd, PWM_SERVO_SET(i), val);
+					}
+					//dprintf(serial_fd, "\n");
+				}
+			}
+		}
+	}
+
+	
 	return 0;
 }
 
