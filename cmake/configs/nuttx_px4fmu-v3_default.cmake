@@ -10,7 +10,7 @@ set(config_module_list
 	#
 	# Board support modules
 	#
-
+	examples/pwm_pass
 	modules/serial
 
 	drivers/airspeed

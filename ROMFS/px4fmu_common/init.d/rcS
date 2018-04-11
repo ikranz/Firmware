@@ -943,11 +943,25 @@ then
 			param set MAV_TYPE ${MAV_TYPE}
 		fi
 
+		#later added	############################	
+		if [ $MAV_TYPE == 7 ]
+		then
+			echo "Blimp"
+			sh /etc/init.d/rc.blimp_apps
+		else
+			# Load mixer and configure outputs
+			sh /etc/init.d/rc.interface
+
+			# Start standard vtol apps
+			sh /etc/init.d/rc.vtol_apps
+		fi
+		#######################################
+
 		# Load mixer and configure outputs
-		sh /etc/init.d/rc.interface
+		#sh /etc/init.d/rc.interface
 
 		# Start standard vtol apps
-		sh /etc/init.d/rc.vtol_apps
+		#sh /etc/init.d/rc.vtol_apps
 	fi
 
 	#

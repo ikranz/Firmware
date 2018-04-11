@@ -125,8 +125,9 @@ int pwm_pass_main(int argc, char *argv[]) {
 
 	while(1){
 		/*wait 1000ms for one file descriptor change*/
+		//dprintf(serial_fd, "value found");
 		int poll_ret = px4_poll(fds, 1, 1000);
-		int val[6];
+		int val;
 
 		/*handle no data change*/
 		if(poll_ret == 0) {
@@ -136,30 +137,26 @@ int pwm_pass_main(int argc, char *argv[]) {
 		/*handle data change*/
 		else {
 
-			if(fds[0].revents & fds[0].revents & POLLIN) {
+			if(fds[0].revents & fds[1].revents & POLLIN) {
+				struct rc_channels_s data;
+				orb_copy(ORB_ID(rc_channels), rc_sub_fd, &data);
 
-				//obtained data for the first file descriptor
+				/* obtained data for the first file descriptor */
 				struct sensor_combined_s raw;
-				// copy sensors raw data into local buffer
+				/* copy sensors raw data into local buffer */
 				orb_copy(ORB_ID(sensor_combined), sensor_sub_fd, &raw);
-				dprintf(serial_fd, ".acc.%8.4f..%8.4f..%8.4f.acc.",
+				PX4_INFO("Accelerometer:\t%8.4f\t%8.4f\t%8.4f",
 					 (double)raw.accelerometer_m_s2[0],
 					 (double)raw.accelerometer_m_s2[1],
 					 (double)raw.accelerometer_m_s2[2]);
 
-				
 				time (&rawtime);
-				timeinfo = localtime (&rawtime);
+					timeinfo = localtime (&rawtime);
 
-				//rc
-				struct rc_channels_s data;
-				orb_copy(ORB_ID(rc_channels), rc_sub_fd, &data);
-
-				dprintf(serial_fd, ".rc");
-
+					dprintf(serial_fd, ".rc");
 				for (unsigned i = 0; i < 6; i++) {
-					val[i] = ((double)data.channels[i]+1.5) * 1000;
-					dprintf(serial_fd, ".%d.", val[i]);
+					val = ((double)data.channels[i]+1.5) * 1000;
+					dprintf(serial_fd, ".%d.", val);
 				}
 
 				dprintf(serial_fd, "rc. %s", asctime(timeinfo));
@@ -169,17 +166,19 @@ int pwm_pass_main(int argc, char *argv[]) {
 					for (unsigned i = 0; i < 6; i++) {
 						//dprintf(serial_fd, "value found");
 						//if(val > 2000){val = 2000;}
-						px4_ioctl(fd, PWM_SERVO_SET(i), val[i]);
+						px4_ioctl(fd, PWM_SERVO_SET(i), val);
 					}
 				}
 
 				else {
 					px4_ioctl(fd, PWM_SERVO_SET(0), 860);
 				}
+
 			}
+			PX4_INFO("\n");
 			
 		}
-		usleep(50000);
+		usleep(1000);
 	}
 
 	
